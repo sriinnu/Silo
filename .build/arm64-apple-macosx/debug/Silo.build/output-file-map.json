@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/master.swiftdeps"
+  },
+  "/Users/srinivaspendela/Packages/Silo/Sources/Silo/BrowserCookieClient.swift": {
+    "dependencies": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieClient.d",
+    "object": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieClient.swift.o",
+    "swiftmodule": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieClient.swiftdeps",
+    "diagnostics": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieClient.dia"
+  },
+  "/Users/srinivaspendela/Packages/Silo/Sources/Silo/BrowserCookieModels.swift": {
+    "dependencies": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieModels.d",
+    "object": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieModels.swift.o",
+    "swiftmodule": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieModels~partial.swiftmodule",
+    "swift-dependencies": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieModels.swiftdeps",
+    "diagnostics": "/Users/srinivaspendela/Packages/Silo/.build/arm64-apple-macosx/debug/Silo.build/BrowserCookieModels.dia"
+  }
+}

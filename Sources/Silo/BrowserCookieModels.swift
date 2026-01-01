@@ -1,0 +1,238 @@
+import Foundation
+
+/// Supported browsers for cookie extraction.
+public enum Browser: String, Sendable, Hashable, CaseIterable {
+    case safari
+    case chrome
+    case chromeBeta
+    case chromeCanary
+    case arc
+    case arcBeta
+    case arcCanary
+    case chatgptAtlas
+    case chromium
+    case firefox
+    case brave
+    case braveBeta
+    case braveNightly
+    case edge
+    case edgeBeta
+    case edgeCanary
+    case helium
+    case vivaldi
+
+    public var displayName: String {
+        switch self {
+        case .safari: "Safari"
+        case .chrome: "Chrome"
+        case .chromeBeta: "Chrome Beta"
+        case .chromeCanary: "Chrome Canary"
+        case .arc: "Arc"
+        case .arcBeta: "Arc Beta"
+        case .arcCanary: "Arc Canary"
+        case .chatgptAtlas: "ChatGPT Atlas"
+        case .chromium: "Chromium"
+        case .firefox: "Firefox"
+        case .brave: "Brave"
+        case .braveBeta: "Brave Beta"
+        case .braveNightly: "Brave Nightly"
+        case .edge: "Microsoft Edge"
+        case .edgeBeta: "Microsoft Edge Beta"
+        case .edgeCanary: "Microsoft Edge Canary"
+        case .helium: "Helium"
+        case .vivaldi: "Vivaldi"
+        }
+    }
+
+    public static let defaultImportOrder: [Browser] = [
+        .safari, .chrome, .edge, .brave, .arc,
+        .chatgptAtlas, .chromium, .helium, .vivaldi, .firefox,
+        .chromeBeta, .chromeCanary, .arcBeta, .arcCanary,
+        .braveBeta, .braveNightly, .edgeBeta, .edgeCanary,
+    ]
+
+    var engine: BrowserEngine {
+        switch self {
+        case .safari: .webkit
+        case .firefox: .firefox
+        default: .chromium
+        }
+    }
+}
+
+enum BrowserEngine: Sendable {
+    case webkit
+    case chromium
+    case firefox
+}
+
+/// Domain matching strategy for cookie queries.
+public enum BrowserCookieDomainMatch: Sendable {
+    case contains
+    case suffix
+    case exact
+}
+
+/// Maps a cookie domain to an origin URL when building HTTPCookie values.
+public enum BrowserCookieOriginStrategy: Sendable {
+    case domainBased
+    case fixed(URL)
+    case custom(@Sendable (String) -> URL?)
+
+    func resolve(domain: String) -> URL? {
+        switch self {
+        case .domainBased:
+            URL(string: "https://\(domain)")
+        case let .fixed(url):
+            url
+        case let .custom(resolver):
+            resolver(domain)
+        }
+    }
+}
+
+/// Query definition for fetching browser cookies.
+public struct BrowserCookieQuery: Sendable {
+    public let domains: [String]
+    public let domainMatch: BrowserCookieDomainMatch
+    public let origin: BrowserCookieOriginStrategy
+    public let includeExpired: Bool
+    public let referenceDate: Date
+
+    public init(
+        domains: [String] = [],
+        domainMatch: BrowserCookieDomainMatch = .contains,
+        origin: BrowserCookieOriginStrategy = .domainBased,
+        includeExpired: Bool = false,
+        referenceDate: Date = Date())
+    {
+        self.domains = domains
+        self.domainMatch = domainMatch
+        self.origin = origin
+        self.includeExpired = includeExpired
+        self.referenceDate = referenceDate
+    }
+}
+
+/// A browser profile identifier.
+public struct BrowserProfile: Sendable, Hashable {
+    public let id: String
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// Which cookie store a browser profile represents.
+public enum BrowserCookieStoreKind: String, Sendable {
+    case primary
+    case network
+    case safari
+}
+
+/// A concrete cookie store for a browser profile.
+public struct BrowserCookieStore: Sendable, Hashable {
+    public let browser: Browser
+    public let profile: BrowserProfile
+    public let kind: BrowserCookieStoreKind
+    public let label: String
+    public let databaseURL: URL?
+
+    public init(
+        browser: Browser,
+        profile: BrowserProfile,
+        kind: BrowserCookieStoreKind,
+        label: String,
+        databaseURL: URL?)
+    {
+        self.browser = browser
+        self.profile = profile
+        self.kind = kind
+        self.label = label
+        self.databaseURL = databaseURL
+    }
+}
+
+/// A browser cookie record normalized for cross-browser handling.
+public struct BrowserCookieRecord: Sendable {
+    public let domain: String
+    public let name: String
+    public let path: String
+    public let value: String
+    public let expires: Date?
+    public let isSecure: Bool
+    public let isHTTPOnly: Bool
+
+    public init(
+        domain: String,
+        name: String,
+        path: String,
+        value: String,
+        expires: Date?,
+        isSecure: Bool,
+        isHTTPOnly: Bool)
+    {
+        self.domain = domain
+        self.name = name
+        self.path = path
+        self.value = value
+        self.expires = expires
+        self.isSecure = isSecure
+        self.isHTTPOnly = isHTTPOnly
+    }
+}
+
+/// Cookie records loaded from a specific browser store.
+public struct BrowserCookieStoreRecords: Sendable {
+    public let store: BrowserCookieStore
+    public let records: [BrowserCookieRecord]
+
+    public init(store: BrowserCookieStore, records: [BrowserCookieRecord]) {
+        self.store = store
+        self.records = records
+    }
+
+    public var label: String { self.store.label }
+    public var browser: Browser { self.store.browser }
+
+    public func cookies(origin: BrowserCookieOriginStrategy = .domainBased) -> [HTTPCookie] {
+        BrowserCookieClient.makeHTTPCookies(self.records, origin: origin)
+    }
+}
+
+/// Errors raised when reading browser cookies.
+public enum BrowserCookieError: LocalizedError, Sendable {
+    case notFound(browser: Browser, details: String)
+    case accessDenied(browser: Browser, details: String)
+    case loadFailed(browser: Browser, details: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .notFound(browser, details):
+            "\(browser.displayName) cookies not found: \(details)"
+        case let .accessDenied(browser, details):
+            "\(browser.displayName) access denied: \(details)"
+        case let .loadFailed(browser, details):
+            "\(browser.displayName) load failed: \(details)"
+        }
+    }
+
+    public var accessDeniedHint: String {
+        switch self {
+        case .accessDenied:
+            #if os(macOS)
+            return "Enable Full Disk Access in System Settings → Privacy & Security"
+            #elseif os(Linux)
+            return "Check file permissions for browser profile directories"
+            #elseif os(Windows)
+            return "Check DPAPI access and user profile permissions"
+            #else
+            return "Check permissions for cookie storage"
+            #endif
+        default:
+            return ""
+        }
+    }
+}
