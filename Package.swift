@@ -6,8 +6,6 @@ let package = Package(
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
-        .linux,
-        .windows(.v10),
     ],
     products: [
         .library(name: "Silo", targets: ["Silo"]),
