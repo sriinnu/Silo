@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SweetCookieKit",
+    name: "Silo",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
@@ -10,21 +10,21 @@ let package = Package(
         .windows(.v10),
     ],
     products: [
-        .library(name: "SweetCookieKit", targets: ["SweetCookieKit"]),
+        .library(name: "Silo", targets: ["Silo"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0"),
     ],
     targets: [
         .target(
-            name: "SweetCookieKit",
-            path: "Sources/SweetCookieKit",
+            name: "Silo",
+            path: "Sources/Silo",
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency"),
             ]),
         .testTarget(
-            name: "SweetCookieKitTests",
-            dependencies: ["SweetCookieKit"],
-            path: "Tests/SweetCookieKitTests"),
+            name: "SiloTests",
+            dependencies: ["Silo"],
+            path: "Tests/SiloTests"),
     ],
     swiftLanguageModes: [.v6])
