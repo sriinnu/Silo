@@ -73,6 +73,31 @@ public enum BrowserCookieDomainMatch: Sendable {
     case exact
 }
 
+/// Path matching strategy for cookie queries.
+public enum BrowserCookiePathMatch: Sendable {
+    case contains
+    case prefix
+    case exact
+}
+
+/// SameSite policy values for cookies.
+public enum BrowserCookieSameSite: String, Sendable {
+    case lax
+    case strict
+    case none
+
+    public var propertyValue: String {
+        switch self {
+        case .lax:
+            return "Lax"
+        case .strict:
+            return "Strict"
+        case .none:
+            return "None"
+        }
+    }
+}
+
 /// Maps a cookie domain to an origin URL when building HTTPCookie values.
 public enum BrowserCookieOriginStrategy: Sendable {
     case domainBased
@@ -95,6 +120,16 @@ public enum BrowserCookieOriginStrategy: Sendable {
 public struct BrowserCookieQuery: Sendable {
     public let domains: [String]
     public let domainMatch: BrowserCookieDomainMatch
+    public let domainPattern: String?
+    public let useRegex: Bool
+    public let paths: [String]
+    public let pathMatch: BrowserCookiePathMatch
+    public let secureOnly: Bool?
+    public let httpOnlyOnly: Bool?
+    public let excludeSession: Bool
+    public let minExpiryDate: Date?
+    public let maxExpiryDate: Date?
+    public let sameSite: BrowserCookieSameSite?
     public let origin: BrowserCookieOriginStrategy
     public let includeExpired: Bool
     public let referenceDate: Date
@@ -102,12 +137,32 @@ public struct BrowserCookieQuery: Sendable {
     public init(
         domains: [String] = [],
         domainMatch: BrowserCookieDomainMatch = .contains,
+        domainPattern: String? = nil,
+        useRegex: Bool = false,
+        paths: [String] = [],
+        pathMatch: BrowserCookiePathMatch = .contains,
+        secureOnly: Bool? = nil,
+        httpOnlyOnly: Bool? = nil,
+        excludeSession: Bool = false,
+        minExpiryDate: Date? = nil,
+        maxExpiryDate: Date? = nil,
+        sameSite: BrowserCookieSameSite? = nil,
         origin: BrowserCookieOriginStrategy = .domainBased,
         includeExpired: Bool = false,
         referenceDate: Date = Date())
     {
         self.domains = domains
         self.domainMatch = domainMatch
+        self.domainPattern = domainPattern
+        self.useRegex = useRegex
+        self.paths = paths
+        self.pathMatch = pathMatch
+        self.secureOnly = secureOnly
+        self.httpOnlyOnly = httpOnlyOnly
+        self.excludeSession = excludeSession
+        self.minExpiryDate = minExpiryDate
+        self.maxExpiryDate = maxExpiryDate
+        self.sameSite = sameSite
         self.origin = origin
         self.includeExpired = includeExpired
         self.referenceDate = referenceDate
@@ -158,12 +213,17 @@ public struct BrowserCookieStore: Sendable, Hashable {
 /// A browser cookie record normalized for cross-browser handling.
 public struct BrowserCookieRecord: Sendable {
     public let domain: String
+    public let isHostOnly: Bool
     public let name: String
     public let path: String
     public let value: String
     public let expires: Date?
     public let isSecure: Bool
     public let isHTTPOnly: Bool
+    public let sameSite: BrowserCookieSameSite?
+
+    public var isDomainCookie: Bool { !self.isHostOnly }
+    public var isSession: Bool { self.expires == nil }
 
     public init(
         domain: String,
@@ -172,15 +232,29 @@ public struct BrowserCookieRecord: Sendable {
         value: String,
         expires: Date?,
         isSecure: Bool,
-        isHTTPOnly: Bool)
+        isHTTPOnly: Bool,
+        isHostOnly: Bool? = nil,
+        sameSite: BrowserCookieSameSite? = nil)
     {
-        self.domain = domain
+        let (normalizedDomain, hostOnly) = Self.parseDomain(domain, isHostOnly: isHostOnly)
+        self.domain = normalizedDomain
+        self.isHostOnly = hostOnly
         self.name = name
         self.path = path
         self.value = value
         self.expires = expires
         self.isSecure = isSecure
         self.isHTTPOnly = isHTTPOnly
+        self.sameSite = sameSite
+    }
+
+    private static func parseDomain(_ raw: String, isHostOnly: Bool?) -> (String, Bool) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.hasPrefix(".") ? String(trimmed.dropFirst()) : trimmed
+        if let isHostOnly {
+            return (normalized, isHostOnly)
+        }
+        return (normalized, !trimmed.hasPrefix("."))
     }
 }
 
@@ -233,6 +307,18 @@ public enum BrowserCookieError: LocalizedError, Sendable {
             #endif
         default:
             return ""
+        }
+    }
+}
+
+/// Errors raised when building or applying cookie queries.
+public enum BrowserCookieQueryError: LocalizedError, Sendable {
+    case invalidDomainPattern(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .invalidDomainPattern(pattern):
+            "Invalid domain regex pattern: \(pattern)"
         }
     }
 }

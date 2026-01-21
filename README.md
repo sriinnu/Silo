@@ -17,6 +17,7 @@ Silo is a Swift library for reading browser cookies across macOS, iOS, Linux, an
 - 📊 **Comprehensive** – Access to all cookie attributes (secure, httpOnly, sameSite, etc.)
 
 ### Advanced Features
+Note: The advanced features below are planned and not yet implemented. See `TODO.md`.
 - 🔄 **Cookie Manipulation** – Create, update, and delete cookies across browsers
 - 📦 **Batch Operations** – Process multiple cookies efficiently with bulk APIs
 - 💾 **Import/Export** – JSON and Netscape cookie format support
@@ -29,6 +30,12 @@ Silo is a Swift library for reading browser cookies across macOS, iOS, Linux, an
 - 🔔 **Change Tracking** – Monitor cookie modifications and updates
 - 🌐 **Session Management** – Extract and manage session cookies
 - 🎨 **Customizable** – Extensible architecture for custom browser support
+
+## Status
+- Implemented: core models, query filtering, HTTPCookie mapping (host-only + SameSite), macOS store discovery, macOS Chromium cookie reading + Keychain decryption, Safari binarycookies parsing.
+- In progress: macOS Firefox cookie reader.
+- Planned: Linux/Windows/iOS readers, CRUD, import/export, sync, analytics, testing support.
+- See `TODO.md` for the working backlog.
 
 ## 📦 Installation
 
@@ -65,12 +72,14 @@ let cookies = try client.cookies(matching: query, in: .chrome)
 
 | Browser | macOS | Linux | Windows | iOS |
 |---------|-------|-------|---------|-----|
-| Safari | ✅ | - | - | ✅ |
-| Chrome | ✅ | ✅ | ✅ | - |
-| Firefox | ✅ | ✅ | ✅ | - |
-| Edge | ✅ | ✅ | ✅ | - |
-| Brave | ✅ | ✅ | ✅ | - |
-| Arc | ✅ | - | - | - |
+| Safari | read | - | - | planned |
+| Chrome | read | planned | planned | - |
+| Firefox | discovery | planned | planned | - |
+| Edge | read | planned | planned | - |
+| Brave | read | planned | planned | - |
+| Arc | read | - | - | - |
+
+Status legend: read = cookie reading implemented; discovery = profile/store detection only; planned = not implemented yet.
 
 ## 📝 API
 
@@ -126,7 +135,7 @@ let allCookies = try client.cookies(
 - **Keychain** access
 - **Shared container** entitlements
 
-## �� Testing
+## Testing
 
 ```bash
 swift test
@@ -147,7 +156,8 @@ MIT License - Copyright (c) 2026 Srinivas Pendela
 **GitHub:** https://github.com/sriinnu/Silo  
 **Author:** Srinivas Pendela (hello@srinivas.dev)
 
-## �️ Advanced Usage
+## Advanced Usage
+Note: Examples below reflect planned APIs; not all types or operations are implemented yet.
 
 ### Cookie Manipulation
 
@@ -173,9 +183,9 @@ let newCookie = BrowserCookie(
     value: "dark_mode",
     domain: "example.com",
     path: "/",
-    expiresAt: Date().addingTimeInterval(86400 * 365), // 1 year
+    expires: Date().addingTimeInterval(86400 * 365), // 1 year
     isSecure: true,
-    isHttpOnly: false,
+    isHTTPOnly: false,
     sameSite: .lax
 )
 try client.insert(newCookie, in: .chrome)
@@ -217,7 +227,7 @@ try client.deleteCookies(matching: query, in: .chrome)
 let cookies = try client.cookies(in: .chrome)
 let netscapeFormat = cookies.map { cookie in
     let secure = cookie.isSecure ? "TRUE" : "FALSE"
-    let httpOnly = cookie.isHttpOnly ? "#HttpOnly_" : ""
+    let httpOnly = cookie.isHTTPOnly ? "#HttpOnly_" : ""
     let expires = Int(cookie.expiresDate?.timeIntervalSince1970 ?? 0)
     return "\(httpOnly)\(cookie.domain)\tTRUE\t\(cookie.path)\t\(secure)\t\(expires)\t\(cookie.name)\t\(cookie.value)"
 }.joined(separator: "\n")
@@ -245,10 +255,10 @@ struct CookieAnalyzer {
         return CookieStatistics(
             totalCount: cookies.count,
             secureCount: cookies.filter { $0.isSecure }.count,
-            httpOnlyCount: cookies.filter { $0.isHttpOnly }.count,
+            httpOnlyCount: cookies.filter { $0.isHTTPOnly }.count,
             sessionCount: cookies.filter { $0.isSession }.count,
             expiredCount: cookies.filter { 
-                guard let expires = $0.expiresAt else { return false }
+                guard let expires = $0.expires else { return false }
                 return expires < Date()
             }.count,
             domainDistribution: Dictionary(grouping: cookies, by: \.domain)
@@ -267,7 +277,7 @@ struct CookieAnalyzer {
         let threshold = Date().addingTimeInterval(Double(days) * 86400)
         let cookies = try client.records(in: .chrome)
         return cookies.filter { cookie in
-            guard let expires = cookie.expiresAt else { return false }
+            guard let expires = cookie.expires else { return false }
             return expires < threshold && expires > Date()
         }
     }
@@ -280,7 +290,7 @@ struct CookieStatistics {
     let sessionCount: Int
     let expiredCount: Int
     let domainDistribution: [String: Int]
-    let sameSiteDistribution: [SameSitePolicy: Int]
+    let sameSiteDistribution: [BrowserCookieSameSite: Int]
 }
 ```
 
@@ -458,9 +468,9 @@ class CookieTests: XCTestCase {
             value: "value",
             domain: "example.com",
             path: "/",
-            expiresAt: Date().addingTimeInterval(3600),
+            expires: Date().addingTimeInterval(3600),
             isSecure: true,
-            isHttpOnly: true,
+            isHTTPOnly: true,
             sameSite: .lax
         )
         mockClient.mockCookies = [mockCookie]
@@ -558,27 +568,27 @@ func exportCookiesSecurely(cookies: [HTTPCookie], password: String) throws -> Da
 ```
 
 ## 📚 API Reference
+Note: CRUD, import/export, sync, and analytics APIs are planned but not implemented yet. See `TODO.md`.
 
 ### BrowserCookieClient
 
 ```swift
-public class BrowserCookieClient {
+public struct BrowserCookieClient {
     // Initialize
-    public init()
-    
+    public init(configuration: Configuration = Configuration())
+
+    // Browser stores
+    public func stores(for browser: Browser) -> [BrowserCookieStore]
+    public func stores(in browsers: [Browser]) -> [BrowserCookieStore]
+
     // Query cookies
+    public func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord]
+    public func records(matching query: BrowserCookieQuery, in browser: Browser) throws -> [BrowserCookieStoreRecords]
+    public func records(matching query: BrowserCookieQuery, in browsers: [Browser]) throws -> [BrowserCookieStoreRecords]
+
+    public func cookies(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [HTTPCookie]
     public func cookies(matching query: BrowserCookieQuery, in browser: Browser) throws -> [HTTPCookie]
-    public func records(matching query: BrowserCookieQuery, in browser: Browser) throws -> [BrowserCookieRecord]
-    
-    // CRUD operations
-    public func insert(_ cookie: HTTPCookie, in browser: Browser) throws
-    public func update(_ cookie: HTTPCookie, in browser: Browser) throws
-    public func delete(_ cookie: HTTPCookie, in browser: Browser) throws
-    public func deleteCookies(matching query: BrowserCookieQuery, in browser: Browser) throws
-    
-    // Browser management
-    public func stores(for browser: Browser) -> [BrowserStore]
-    public func defaultStore(for browser: Browser) -> BrowserStore?
+    public func cookies(matching query: BrowserCookieQuery, in browsers: [Browser]) throws -> [HTTPCookie]
 }
 ```
 
@@ -587,17 +597,23 @@ public class BrowserCookieClient {
 ```swift
 public struct BrowserCookieQuery {
     public var domains: [String]
-    public var domainMatch: DomainMatchStrategy
-    public var paths: [String]?
-    public var pathMatch: PathMatchStrategy
+    public var domainMatch: BrowserCookieDomainMatch
+    public var domainPattern: String?
+    public var useRegex: Bool
+    public var paths: [String]
+    public var pathMatch: BrowserCookiePathMatch
     public var secureOnly: Bool?
     public var httpOnlyOnly: Bool?
     public var excludeSession: Bool
     public var minExpiryDate: Date?
-    public var sameSite: SameSitePolicy?
+    public var maxExpiryDate: Date?
+    public var sameSite: BrowserCookieSameSite?
+    public var origin: BrowserCookieOriginStrategy
+    public var includeExpired: Bool
+    public var referenceDate: Date
 }
 ```
 
-## �🔗 See Also
+## See Also
 
 [Helix](https://github.com/sriinnu/Helix) – Command-line parsing framework
