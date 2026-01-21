@@ -1,34 +1,24 @@
-#if os(macOS)
-import CommonCrypto
+#if os(Linux)
 import Foundation
-import Security
 import SQLite3
+#if canImport(CryptoSwift)
+import CryptoSwift
+#endif
 
-struct MacOSChromiumCookieReader {
+struct LinuxChromiumCookieReader {
     func readCookies(store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
         guard let databaseURL = store.databaseURL else {
             throw BrowserCookieError.notFound(
                 browser: store.browser,
                 details: "Missing cookie database URL.")
         }
-
-        let (cookieValues, usedEncryptedValues) = try readCookieRows(databaseURL: databaseURL, browser: store.browser)
-        if usedEncryptedValues, !cookieValues.hasDecryptionKey {
-            throw BrowserCookieError.accessDenied(
-                browser: store.browser,
-                details: "Keychain access required to decrypt cookies.")
-        }
-        return cookieValues.records
-    }
-
-    private func readCookieRows(databaseURL: URL, browser: Browser) throws -> (CookieReadResult, Bool) {
         let snapshot = SQLiteSnapshot.prepare(from: databaseURL)
         defer { snapshot.cleanup() }
 
         var db: OpaquePointer?
         if sqlite3_open_v2(snapshot.readURL.path, &db, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
             throw BrowserCookieError.loadFailed(
-                browser: browser,
+                browser: store.browser,
                 details: "Unable to open cookies database.")
         }
         defer { sqlite3_close(db) }
@@ -40,12 +30,12 @@ struct MacOSChromiumCookieReader {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
             throw BrowserCookieError.loadFailed(
-                browser: browser,
+                browser: store.browser,
                 details: "Unable to read cookies table.")
         }
         defer { sqlite3_finalize(statement) }
 
-        let decryptor = ChromiumCookieDecryptor(browser: browser, databaseURL: databaseURL)
+        let decryptor = LinuxChromiumDecryptor(databaseURL: databaseURL)
         var records: [BrowserCookieRecord] = []
         var usedEncryptedValues = false
         var failedDecryptions = 0
@@ -80,8 +70,8 @@ struct MacOSChromiumCookieReader {
                 continue
             }
 
-            let expires = ChromiumCookieDecryptor.date(fromChromiumTimestamp: expiresUtc)
-            let sameSite = ChromiumCookieDecryptor.sameSite(from: sameSiteValue)
+            let expires = LinuxChromiumDecryptor.date(fromChromiumTimestamp: expiresUtc)
+            let sameSite = LinuxChromiumDecryptor.sameSite(from: sameSiteValue)
 
             records.append(BrowserCookieRecord(
                 domain: hostKey,
@@ -96,46 +86,25 @@ struct MacOSChromiumCookieReader {
 
         if usedEncryptedValues, records.isEmpty, failedDecryptions > 0 {
             throw BrowserCookieError.loadFailed(
-                browser: browser,
+                browser: store.browser,
                 details: "Unable to decrypt cookie values.")
         }
 
-        return (CookieReadResult(records: records, hasDecryptionKey: decryptor.hasKey), usedEncryptedValues)
+        return records
     }
 }
 
-private struct CookieReadResult {
-    let records: [BrowserCookieRecord]
-    let hasDecryptionKey: Bool
-}
-
-private struct ChromiumCookieDecryptor {
+private struct LinuxChromiumDecryptor {
     private static let salt = "saltysalt".data(using: .utf8) ?? Data()
-    private static let iterations: UInt32 = 1003
-    private static let keyLength = kCCKeySizeAES128
-    private static let chromiumEpoch: Date = {
-        var components = DateComponents()
-        components.year = 1601
-        components.month = 1
-        components.day = 1
-        components.calendar = Calendar(identifier: .gregorian)
-        components.timeZone = TimeZone(secondsFromGMT: 0)
-        return components.date ?? Date(timeIntervalSince1970: 0)
-    }()
+    private static let iterations: Int = 1
+    private static let keyLength: Int = 16
 
     let legacyKey: Data?
     let gcmKey: Data?
 
-    var hasKey: Bool { self.legacyKey != nil || self.gcmKey != nil }
-
-    init(browser: Browser, databaseURL: URL) {
-        guard let serviceName = Self.serviceName(for: browser) else {
-            self.legacyKey = nil
-            self.gcmKey = nil
-            return
-        }
-        let password = Self.readKeychainPassword(service: serviceName)
-        self.legacyKey = password.flatMap { Self.deriveKey(from: $0) }
+    init(databaseURL: URL) {
+        let password = Self.safeStoragePassword()
+        self.legacyKey = Self.deriveKey(from: password)
         self.gcmKey = Self.readLocalStateKey(databaseURL: databaseURL, legacyKey: self.legacyKey)
     }
 
@@ -158,7 +127,7 @@ private struct ChromiumCookieDecryptor {
     }
 
     private static func decryptCBC(payload: Data, key: Data) -> String? {
-        let iv = Data(repeating: 0x20, count: kCCBlockSizeAES128)
+        let iv = Data(repeating: 0x20, count: 16)
         guard let data = CryptoSupport.decryptAESCBC(payload: payload, key: key, iv: iv) else { return nil }
         return String(decoding: data, as: UTF8.self)
     }
@@ -187,37 +156,39 @@ private struct ChromiumCookieDecryptor {
         }
     }
 
-    private static func deriveKey(from password: String) -> Data? {
-        let passwordBytes = Array(password.utf8)
-        var key = Data(count: keyLength)
-        let status = key.withUnsafeMutableBytes { keyBytes in
-            CCKeyDerivationPBKDF(
-                CCPBKDFAlgorithm(kCCPBKDF2),
-                passwordBytes,
-                passwordBytes.count,
-                [UInt8](salt),
-                salt.count,
-                CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA1),
-                iterations,
-                keyBytes.bindMemory(to: UInt8.self).baseAddress,
-                keyLength)
+    private static let chromiumEpoch: Date = {
+        var components = DateComponents()
+        components.year = 1601
+        components.month = 1
+        components.day = 1
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        return components.date ?? Date(timeIntervalSince1970: 0)
+    }()
+
+    private static func safeStoragePassword() -> String {
+        if let env = ProcessInfo.processInfo.environment["SILO_CHROME_SAFE_STORAGE"], !env.isEmpty {
+            return env
         }
-        return status == kCCSuccess ? key : nil
+        return "peanuts"
     }
 
-    private static func readKeychainPassword(service: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else {
+    private static func deriveKey(from password: String) -> Data? {
+        #if canImport(CryptoSwift)
+        do {
+            let key = try PKCS5.PBKDF2(
+                password: Array(password.utf8),
+                salt: Array(salt),
+                iterations: iterations,
+                keyLength: keyLength,
+                variant: .sha1).calculate()
+            return Data(key)
+        } catch {
             return nil
         }
-        return String(data: data, encoding: .utf8)
+        #else
+        return nil
+        #endif
     }
 
     private static func readLocalStateKey(databaseURL: URL, legacyKey: Data?) -> Data? {
@@ -236,6 +207,10 @@ private struct ChromiumCookieDecryptor {
             keyData = Data(keyData.dropFirst(dpapiPrefix.count))
         }
 
+        if keyData.count == 32 {
+            return keyData
+        }
+
         if keyData.count >= 3,
            let prefix = String(data: keyData.prefix(3), encoding: .utf8),
            (prefix == "v10" || prefix == "v11"),
@@ -243,14 +218,8 @@ private struct ChromiumCookieDecryptor {
            let decrypted = CryptoSupport.decryptAESCBC(
                 payload: Data(keyData.dropFirst(3)),
                 key: legacyKey,
-                iv: Data(repeating: 0x20, count: kCCBlockSizeAES128)) {
-            if decrypted.count == 32 {
-                return decrypted
-            }
-        }
-
-        if keyData.count == 32 {
-            return keyData
+                iv: Data(repeating: 0x20, count: 16)) {
+            return decrypted.count == 32 ? decrypted : nil
         }
 
         return nil
@@ -262,29 +231,6 @@ private struct ChromiumCookieDecryptor {
         let rootURL = profileURL.deletingLastPathComponent()
         let localStateURL = rootURL.appendingPathComponent("Local State")
         return FileManager.default.fileExists(atPath: localStateURL.path) ? localStateURL : nil
-    }
-
-    private static func serviceName(for browser: Browser) -> String? {
-        switch browser {
-        case .chrome: return "Chrome Safe Storage"
-        case .chromeBeta: return "Chrome Beta Safe Storage"
-        case .chromeCanary: return "Chrome Canary Safe Storage"
-        case .chromium: return "Chromium Safe Storage"
-        case .brave: return "Brave Safe Storage"
-        case .braveBeta: return "Brave Browser Beta Safe Storage"
-        case .braveNightly: return "Brave Browser Nightly Safe Storage"
-        case .edge: return "Microsoft Edge Safe Storage"
-        case .edgeBeta: return "Microsoft Edge Beta Safe Storage"
-        case .edgeCanary: return "Microsoft Edge Canary Safe Storage"
-        case .arc: return "Arc Safe Storage"
-        case .arcBeta: return "Arc Beta Safe Storage"
-        case .arcCanary: return "Arc Canary Safe Storage"
-        case .vivaldi: return "Vivaldi Safe Storage"
-        case .helium: return "Helium Safe Storage"
-        case .chatgptAtlas: return "ChatGPT Atlas Safe Storage"
-        case .safari, .firefox:
-            return nil
-        }
     }
 }
 #endif

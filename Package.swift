@@ -12,11 +12,15 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0"),
+        .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", from: "1.8.4"),
     ],
     targets: [
         .target(
             name: "Silo",
             path: "Sources/Silo",
+            dependencies: [
+                .product(name: "CryptoSwift", package: "CryptoSwift"),
+            ],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency"),
             ]),

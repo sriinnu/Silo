@@ -118,7 +118,7 @@ public struct BrowserCookieClient: Sendable {
                 props[.secure] = "TRUE"
             }
             if record.isHTTPOnly {
-                props[.httpOnly] = "TRUE"
+                props[HTTPCookiePropertyKey("HttpOnly")] = "TRUE"
             }
             if let expires = record.expires {
                 props[.expires] = expires

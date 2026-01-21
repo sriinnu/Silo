@@ -32,10 +32,10 @@ Note: The advanced features below are planned and not yet implemented. See `TODO
 - 🎨 **Customizable** – Extensible architecture for custom browser support
 
 ## Status
-- Implemented: core models, query filtering, HTTPCookie mapping (host-only + SameSite), macOS store discovery, macOS Chromium cookie reading + Keychain decryption, Safari binarycookies parsing.
-- In progress: macOS Firefox cookie reader.
-- Planned: Linux/Windows/iOS readers, CRUD, import/export, sync, analytics, testing support.
+- Implemented: core models, query filtering, HTTPCookie mapping (host-only + SameSite), macOS store discovery + readers, Linux/Windows store discovery + readers (best-effort decryption).
+- Planned: iOS reader, CRUD, import/export, sync, analytics, testing support.
 - See `TODO.md` for the working backlog.
+Note: On Linux/Windows, Silo reads Chromium/Firefox cookie stores with best-effort decryption; keyring integration is not included yet.
 
 ## 📦 Installation
 
@@ -61,8 +61,9 @@ let query = BrowserCookieQuery(
     domainMatch: .suffix
 )
 
-// Get records
-let records = try client.records(matching: query, in: .chrome)
+// Get records (grouped by store)
+let sources = try client.records(matching: query, in: .chrome)
+let records = sources.flatMap { $0.records }
 
 // Convert to HTTPCookie
 let cookies = try client.cookies(matching: query, in: .chrome)
@@ -73,10 +74,10 @@ let cookies = try client.cookies(matching: query, in: .chrome)
 | Browser | macOS | Linux | Windows | iOS |
 |---------|-------|-------|---------|-----|
 | Safari | read | - | - | planned |
-| Chrome | read | planned | planned | - |
-| Firefox | discovery | planned | planned | - |
-| Edge | read | planned | planned | - |
-| Brave | read | planned | planned | - |
+| Chrome | read | read | read | - |
+| Firefox | read | read | read | - |
+| Edge | read | read | read | - |
+| Brave | read | read | read | - |
 | Arc | read | - | - | - |
 
 Status legend: read = cookie reading implemented; discovery = profile/store detection only; planned = not implemented yet.
@@ -159,7 +160,7 @@ MIT License - Copyright (c) 2026 Srinivas Pendela
 ## Advanced Usage
 Note: Examples below reflect planned APIs; not all types or operations are implemented yet.
 
-### Cookie Manipulation
+### Cookie Manipulation (planned)
 
 ```swift
 import Silo
@@ -191,11 +192,12 @@ let newCookie = BrowserCookie(
 try client.insert(newCookie, in: .chrome)
 ```
 
-### Batch Operations
+### Batch Operations (planned)
 
 ```swift
 // Export all cookies to JSON
-let allCookies = try client.records(in: .chrome)
+let allSources = try client.records(matching: BrowserCookieQuery(), in: .chrome)
+let allCookies = allSources.flatMap { $0.records }
 let jsonData = try JSONEncoder().encode(allCookies)
 try jsonData.write(to: URL(fileURLWithPath: "cookies.json"))
 
@@ -207,7 +209,7 @@ for cookie in cookies {
 }
 
 // Copy cookies between browsers
-let firefoxCookies = try client.cookies(in: .firefox)
+let firefoxCookies = try client.cookies(matching: BrowserCookieQuery(), in: .firefox)
 for cookie in firefoxCookies {
     try client.insert(cookie, in: .chrome)
 }
@@ -220,11 +222,11 @@ let query = BrowserCookieQuery(
 try client.deleteCookies(matching: query, in: .chrome)
 ```
 
-### Netscape Cookie Format
+### Netscape Cookie Format (planned)
 
 ```swift
 // Export to Netscape format (wget/curl compatible)
-let cookies = try client.cookies(in: .chrome)
+let cookies = try client.cookies(matching: BrowserCookieQuery(), in: .chrome)
 let netscapeFormat = cookies.map { cookie in
     let secure = cookie.isSecure ? "TRUE" : "FALSE"
     let httpOnly = cookie.isHTTPOnly ? "#HttpOnly_" : ""
@@ -243,14 +245,15 @@ for line in netscapeContent.components(separatedBy: .newlines) {
 }
 ```
 
-### Cookie Analytics
+### Cookie Analytics (planned)
 
 ```swift
 struct CookieAnalyzer {
     let client: BrowserCookieClient
     
     func analyzeChrome() throws -> CookieStatistics {
-        let cookies = try client.records(in: .chrome)
+        let sources = try client.records(matching: BrowserCookieQuery(), in: .chrome)
+        let cookies = sources.flatMap { $0.records }
         
         return CookieStatistics(
             totalCount: cookies.count,
@@ -269,13 +272,15 @@ struct CookieAnalyzer {
     }
     
     func findLargeCookies(minimumBytes: Int = 4000) throws -> [BrowserCookieRecord] {
-        let cookies = try client.records(in: .chrome)
+        let sources = try client.records(matching: BrowserCookieQuery(), in: .chrome)
+        let cookies = sources.flatMap { $0.records }
         return cookies.filter { $0.value.utf8.count >= minimumBytes }
     }
     
     func findExpiringSoon(days: Int = 7) throws -> [BrowserCookieRecord] {
         let threshold = Date().addingTimeInterval(Double(days) * 86400)
-        let cookies = try client.records(in: .chrome)
+        let sources = try client.records(matching: BrowserCookieQuery(), in: .chrome)
+        let cookies = sources.flatMap { $0.records }
         return cookies.filter { cookie in
             guard let expires = cookie.expires else { return false }
             return expires < threshold && expires > Date()
@@ -294,7 +299,7 @@ struct CookieStatistics {
 }
 ```
 
-### Cookie Synchronization
+### Cookie Synchronization (planned)
 
 ```swift
 struct CookieSyncManager {
@@ -314,7 +319,8 @@ struct CookieSyncManager {
     }
     
     func backupCookies(browser: Browser, to path: String) throws {
-        let cookies = try client.records(in: browser)
+        let sources = try client.records(matching: BrowserCookieQuery(), in: browser)
+        let cookies = sources.flatMap { $0.records }
         let backup = CookieBackup(
             browser: browser,
             timestamp: Date(),
@@ -349,7 +355,7 @@ struct CookieBackup: Codable {
 }
 ```
 
-### Advanced Filtering
+### Advanced Filtering (planned)
 
 ```swift
 // Regex domain matching
@@ -385,7 +391,7 @@ let complexQuery = BrowserCookieQuery(
 let filteredCookies = try client.cookies(matching: complexQuery, in: .chrome)
 ```
 
-### Session Management
+### Session Management (planned)
 
 ```swift
 struct SessionManager {
@@ -447,7 +453,7 @@ struct ValidationResult {
 }
 ```
 
-### Testing Support
+### Testing Support (planned)
 
 ```swift
 import XCTest
