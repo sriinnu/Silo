@@ -15,6 +15,7 @@ enum CryptoSupport {
         #if canImport(CommonCrypto)
         var outLength: size_t = 0
         var outData = Data(count: payload.count + kCCBlockSizeAES128)
+        let outCapacity = outData.count
         let status = outData.withUnsafeMutableBytes { outBytes in
             payload.withUnsafeBytes { payloadBytes in
                 iv.withUnsafeBytes { ivBytes in
@@ -29,7 +30,7 @@ enum CryptoSupport {
                             payloadBytes.baseAddress,
                             payload.count,
                             outBytes.baseAddress,
-                            outData.count,
+                            outCapacity,
                             &outLength)
                     }
                 }

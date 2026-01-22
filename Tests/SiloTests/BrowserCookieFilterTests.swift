@@ -72,7 +72,7 @@ final class BrowserCookieFilterTests: XCTestCase {
         let expired = makeRecord(domain: "example.com", expires: now.addingTimeInterval(-60))
         let session = makeRecord(domain: "example.com", expires: nil)
         let future = makeRecord(domain: "example.com", expires: now.addingTimeInterval(60))
-        let query = BrowserCookieQuery(includeExpired: false, excludeSession: true, referenceDate: now)
+        let query = BrowserCookieQuery(excludeSession: true, includeExpired: false, referenceDate: now)
         let filtered = try BrowserCookieClient.apply(query: query, to: [expired, session, future])
         XCTAssertEqual(filtered.count, 1)
         XCTAssertEqual(filtered.first?.expires, future.expires)

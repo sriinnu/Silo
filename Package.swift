@@ -17,10 +17,10 @@ let package = Package(
     targets: [
         .target(
             name: "Silo",
-            path: "Sources/Silo",
             dependencies: [
                 .product(name: "CryptoSwift", package: "CryptoSwift"),
             ],
+            path: "Sources/Silo",
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency"),
             ]),

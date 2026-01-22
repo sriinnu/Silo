@@ -1,6 +1,15 @@
 {
-  "originHash" : "59ea9a694957cfb0d1441e6102d3e55ccec008113d300e55907fb22699027161",
+  "originHash" : "14908f54ee4243db1d3fc3f3a6fca4825ca104a138bf3619ca4ffc4010f1d261",
   "pins" : [
+    {
+      "identity" : "cryptoswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
+      "state" : {
+        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
+        "version" : "1.9.0"
+      }
+    },
     {
       "identity" : "swift-docc-plugin",
       "kind" : "remoteSourceControl",

@@ -8,9 +8,14 @@ import FoundationNetworking
 public struct BrowserCookieClient: Sendable {
     public struct Configuration: Sendable {
         public var homeDirectories: [URL]
+        public var decryptionFailurePolicy: BrowserCookieDecryptionFailurePolicy
 
-        public init(homeDirectories: [URL] = Self.defaultHomeDirectories()) {
+        public init(
+            homeDirectories: [URL] = Self.defaultHomeDirectories(),
+            decryptionFailurePolicy: BrowserCookieDecryptionFailurePolicy = .bestEffort)
+        {
             self.homeDirectories = homeDirectories
+            self.decryptionFailurePolicy = decryptionFailurePolicy
         }
 
         public static func defaultHomeDirectories() -> [URL] {
@@ -68,7 +73,10 @@ public struct BrowserCookieClient: Sendable {
         matching query: BrowserCookieQuery,
         in store: BrowserCookieStore) throws -> [BrowserCookieRecord]
     {
-        let records = try Self.backend(for: store.browser).records(matching: query, in: store)
+        let records = try Self.backend(for: store.browser).records(
+            matching: query,
+            in: store,
+            configuration: self.configuration)
         return try Self.apply(query: query, to: records)
     }
 

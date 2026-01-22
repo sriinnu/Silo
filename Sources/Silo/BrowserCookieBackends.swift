@@ -2,7 +2,10 @@ import Foundation
 
 protocol BrowserCookieBackend: Sendable {
     func stores(for browser: Browser, configuration: BrowserCookieClient.Configuration) -> [BrowserCookieStore]
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord]
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
 }
 
 enum BrowserCookieBackendRegistry {
@@ -44,10 +47,14 @@ enum BrowserCookieBackendRegistry {
 
 struct NullBrowserCookieBackend: BrowserCookieBackend {
     func stores(for browser: Browser, configuration: BrowserCookieClient.Configuration) -> [BrowserCookieStore] {
-        Self.stubStores(for: browser, configuration: configuration)
+        []
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
         throw BrowserCookieError.loadFailed(
             browser: store.browser,
             details: "Cookie reader not implemented for this platform.")
@@ -69,9 +76,15 @@ private struct MacOSChromiumCookieBackend: BrowserCookieBackend {
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
         let reader = MacOSChromiumCookieReader()
-        return try reader.readCookies(store: store)
+        return try reader.readCookies(
+            store: store,
+            decryptionFailurePolicy: configuration.decryptionFailurePolicy)
     }
 
     private static func appSupportDirectoryName(for browser: Browser) -> String? {
@@ -152,8 +165,12 @@ private struct MacOSFirefoxCookieBackend: BrowserCookieBackend {
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
-        let reader = MacOSFirefoxCookieReader()
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
+        let reader = FirefoxCookieReader()
         return try reader.readCookies(store: store)
     }
 
@@ -213,9 +230,17 @@ private struct MacOSSafariCookieBackend: BrowserCookieBackend {
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
-        let reader = MacOSSafariCookieReader()
-        return try reader.readCookies(store: store)
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
+        guard let url = store.databaseURL else {
+            throw BrowserCookieError.notFound(
+                browser: store.browser,
+                details: "Missing Safari cookies file URL.")
+        }
+        return try BinaryCookiesReader().readCookies(from: url)
     }
 
     private static func store(for browser: Browser, url: URL, label: String) -> BrowserCookieStore {
@@ -234,26 +259,41 @@ private struct IOSCookieBackend: BrowserCookieBackend {
     func stores(for browser: Browser, configuration: BrowserCookieClient.Configuration) -> [BrowserCookieStore] {
         var stores: [BrowserCookieStore] = []
         for home in configuration.homeDirectories {
-            let cookiesURL = home
-                .appendingPathComponent("Library")
-                .appendingPathComponent("Cookies")
-                .appendingPathComponent("Cookies.binarycookies")
-            if FileManager.default.fileExists(atPath: cookiesURL.path) {
+            let candidatePaths = [
+                home
+                    .appendingPathComponent("Library")
+                    .appendingPathComponent("Cookies")
+                    .appendingPathComponent("Cookies.binarycookies"),
+                home
+                    .appendingPathComponent("Library")
+                    .appendingPathComponent("WebKit")
+                    .appendingPathComponent("WebsiteData")
+                    .appendingPathComponent("Default")
+                    .appendingPathComponent("Cookies.binarycookies"),
+            ]
+            for url in candidatePaths where FileManager.default.fileExists(atPath: url.path) {
                 stores.append(BrowserCookieStore(
                     browser: browser,
                     profile: BrowserProfile(id: "default", name: "Default"),
                     kind: .primary,
                     label: "Default",
-                    databaseURL: cookiesURL))
+                    databaseURL: url))
             }
         }
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
-        throw BrowserCookieError.loadFailed(
-            browser: store.browser,
-            details: "Cookie reader not implemented for iOS.")
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
+        guard let url = store.databaseURL else {
+            throw BrowserCookieError.notFound(
+                browser: store.browser,
+                details: "Missing cookies file URL.")
+        }
+        return try BinaryCookiesReader().readCookies(from: url)
     }
 }
 #endif
@@ -273,9 +313,15 @@ private struct LinuxChromiumCookieBackend: BrowserCookieBackend {
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
         let reader = LinuxChromiumCookieReader()
-        return try reader.readCookies(store: store)
+        return try reader.readCookies(
+            store: store,
+            decryptionFailurePolicy: configuration.decryptionFailurePolicy)
     }
 
     private static func configDirectoryNames(for browser: Browser) -> [String]? {
@@ -356,8 +402,12 @@ private struct LinuxFirefoxCookieBackend: BrowserCookieBackend {
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
-        let reader = LinuxFirefoxCookieReader()
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
+        let reader = FirefoxCookieReader()
         return try reader.readCookies(store: store)
     }
 
@@ -406,9 +456,15 @@ private struct WindowsChromiumCookieBackend: BrowserCookieBackend {
         return stores
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
         let reader = WindowsChromiumCookieReader()
-        return try reader.readCookies(store: store)
+        return try reader.readCookies(
+            store: store,
+            decryptionFailurePolicy: configuration.decryptionFailurePolicy)
     }
 
     private static func localAppDataURL() -> URL? {
@@ -492,8 +548,12 @@ private struct WindowsFirefoxCookieBackend: BrowserCookieBackend {
         return Self.profileStores(baseURL: baseURL, browser: browser)
     }
 
-    func records(matching query: BrowserCookieQuery, in store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
-        let reader = WindowsFirefoxCookieReader()
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieStore,
+        configuration: BrowserCookieClient.Configuration) throws -> [BrowserCookieRecord]
+    {
+        let reader = FirefoxCookieReader()
         return try reader.readCookies(store: store)
     }
 

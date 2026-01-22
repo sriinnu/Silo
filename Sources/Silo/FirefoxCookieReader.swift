@@ -1,25 +1,21 @@
-#if os(macOS)
 import Foundation
 import SQLite3
 
-struct MacOSFirefoxCookieReader {
+/// Shared Firefox cookie reader for all platforms.
+struct FirefoxCookieReader {
     func readCookies(store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
         guard let databaseURL = store.databaseURL else {
             throw BrowserCookieError.notFound(
                 browser: store.browser,
                 details: "Missing cookie database URL.")
         }
-        return try readCookieRows(databaseURL: databaseURL, browser: store.browser)
-    }
-
-    private func readCookieRows(databaseURL: URL, browser: Browser) throws -> [BrowserCookieRecord] {
         let snapshot = SQLiteSnapshot.prepare(from: databaseURL)
         defer { snapshot.cleanup() }
 
         var db: OpaquePointer?
         if sqlite3_open_v2(snapshot.readURL.path, &db, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
             throw BrowserCookieError.loadFailed(
-                browser: browser,
+                browser: store.browser,
                 details: "Unable to open cookies database.")
         }
         defer { sqlite3_close(db) }
@@ -31,7 +27,7 @@ struct MacOSFirefoxCookieReader {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
             throw BrowserCookieError.loadFailed(
-                browser: browser,
+                browser: store.browser,
                 details: "Unable to read cookies table.")
         }
         defer { sqlite3_finalize(statement) }
@@ -82,7 +78,7 @@ struct MacOSFirefoxCookieReader {
     private static func sameSite(from value: Int32) -> BrowserCookieSameSite? {
         switch value {
         case 0:
-            return .none
+            return BrowserCookieSameSite.none
         case 1:
             return .lax
         case 2:
@@ -135,4 +131,3 @@ struct MacOSFirefoxCookieReader {
         return columns.joined(separator: ", ")
     }
 }
-#endif

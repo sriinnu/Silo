@@ -1,40 +1,27 @@
-#if os(macOS)
 import Foundation
 
-struct MacOSSafariCookieReader {
-    func readCookies(store: BrowserCookieStore) throws -> [BrowserCookieRecord] {
-        guard let url = store.databaseURL else {
-            throw BrowserCookieError.notFound(
-                browser: store.browser,
-                details: "Missing Safari cookies file URL.")
-        }
+/// Parser for Safari/WebKit Cookies.binarycookies files (macOS and iOS).
+struct BinaryCookiesReader {
+    func readCookies(from url: URL) throws -> [BrowserCookieRecord] {
         let data = try Data(contentsOf: url)
-        return try BinaryCookieParser(data: data).parse()
-    }
-}
-
-private struct BinaryCookieParser {
-    private let data: Data
-
-    init(data: Data) {
-        self.data = data
+        return try parse(data: data)
     }
 
-    func parse() throws -> [BrowserCookieRecord] {
-        guard readTag(at: 0) == "cook" else {
+    func parse(data: Data) throws -> [BrowserCookieRecord] {
+        guard readTag(in: data, at: 0) == "cook" else {
             throw BrowserCookieError.loadFailed(
                 browser: .safari,
-                details: "Invalid Safari cookie file header.")
+                details: "Invalid cookie file header.")
         }
 
-        guard let pageCount = readUInt32BE(at: 4) else {
+        guard let pageCount = readUInt32BE(in: data, at: 4) else {
             return []
         }
 
         var pageSizes: [Int] = []
         var offset = 8
         for _ in 0..<pageCount {
-            guard let size = readUInt32BE(at: offset) else { break }
+            guard let size = readUInt32BE(in: data, at: offset) else { break }
             pageSizes.append(Int(size))
             offset += 4
         }
@@ -110,10 +97,6 @@ private struct BinaryCookieParser {
             sameSite: nil)
     }
 
-    private func readTag(at offset: Int) -> String? {
-        readTag(in: data, at: offset)
-    }
-
     private func readTag(in data: Data, at offset: Int) -> String? {
         guard offset + 4 <= data.count else { return nil }
         let slice = data[offset..<(offset + 4)]
@@ -128,10 +111,6 @@ private struct BinaryCookieParser {
         }
         let slice = data[offset..<end]
         return String(data: slice, encoding: .utf8)
-    }
-
-    private func readUInt32BE(at offset: Int) -> UInt32? {
-        readUInt32BE(in: data, at: offset)
     }
 
     private func readUInt32BE(in data: Data, at offset: Int) -> UInt32? {
@@ -166,4 +145,3 @@ private struct BinaryCookieParser {
         return Double(bitPattern: bits)
     }
 }
-#endif

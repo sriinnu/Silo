@@ -98,6 +98,34 @@ public enum BrowserCookieSameSite: String, Sendable {
     }
 }
 
+/// Behavior when a cookie value fails to decrypt.
+public enum BrowserCookieDecryptionFailurePolicy: Sendable {
+    /// Skip undecryptable cookies unless nothing can be returned.
+    case bestEffort
+    /// Treat any decryption failure as a hard error.
+    case strict
+}
+
+/// Redacts cookie values for safe logging.
+public enum CookieValueRedactor {
+    public static func redact(_ value: String, prefix: Int = 4, suffix: Int = 0) -> String {
+        guard !value.isEmpty else { return "" }
+        let safePrefix = max(0, prefix)
+        let safeSuffix = max(0, suffix)
+        let length = value.count
+        if safePrefix + safeSuffix >= length {
+            return String(repeating: "*", count: length)
+        }
+
+        let startIndex = value.startIndex
+        let prefixEnd = value.index(startIndex, offsetBy: safePrefix)
+        let suffixStart = value.index(value.endIndex, offsetBy: -safeSuffix)
+        let prefixValue = String(value[startIndex..<prefixEnd])
+        let suffixValue = safeSuffix > 0 ? String(value[suffixStart..<value.endIndex]) : ""
+        return "\(prefixValue)...\(suffixValue)"
+    }
+}
+
 /// Maps a cookie domain to an origin URL when building HTTPCookie values.
 public enum BrowserCookieOriginStrategy: Sendable {
     case domainBased
@@ -224,6 +252,11 @@ public struct BrowserCookieRecord: Sendable {
 
     public var isDomainCookie: Bool { !self.isHostOnly }
     public var isSession: Bool { self.expires == nil }
+    public var redactedValue: String { CookieValueRedactor.redact(self.value) }
+
+    public func redactedValue(prefix: Int = 4, suffix: Int = 0) -> String {
+        CookieValueRedactor.redact(self.value, prefix: prefix, suffix: suffix)
+    }
 
     public init(
         domain: String,
