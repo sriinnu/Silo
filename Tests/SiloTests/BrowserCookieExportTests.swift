@@ -36,6 +36,7 @@ final class BrowserCookieExportTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(BrowserCookieExport.self, from: data)
 
+        XCTAssertEqual(decoded.schemaVersion, 1)
         XCTAssertEqual(decoded.stores.count, 1)
         let decodedRecord = decoded.stores.first?.records.first
         XCTAssertEqual(decodedRecord?.domain, "example.com")

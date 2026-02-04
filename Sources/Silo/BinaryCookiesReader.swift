@@ -39,8 +39,9 @@ struct BinaryCookiesReader {
     private func parsePage(_ pageData: Data) -> [BrowserCookieRecord] {
         guard pageData.count >= 8 else { return [] }
         let pageTag = readTag(in: pageData, at: 0)
-        let pageHeader = readUInt32BE(in: pageData, at: 0)
-        guard pageTag == "page" || pageHeader == 0x00000100 else { return [] }
+        let pageHeaderBE = readUInt32BE(in: pageData, at: 0)
+        let pageHeaderLE = readUInt32LE(in: pageData, at: 0)
+        guard pageTag == "page" || pageHeaderBE == 0x00000100 || pageHeaderLE == 0x00000100 else { return [] }
         guard let cookieCount = readUInt32LE(in: pageData, at: 4) else { return [] }
 
         var offsets: [Int] = []
@@ -79,10 +80,16 @@ struct BinaryCookiesReader {
         let recordLimit = offset + size
         let expiryOffset = recordBase + 40
         let creationOffset = recordBase + 48
-        guard let expirySeconds = readDoubleLE(in: pageData, at: expiryOffset),
-              let creationSeconds = readDoubleLE(in: pageData, at: creationOffset) else {
-            return nil
+        var expirySeconds = readDoubleLE(in: pageData, at: expiryOffset)
+        var creationSeconds = readDoubleLE(in: pageData, at: creationOffset)
+        if expirySeconds == nil {
+            let fallbackExpiry = recordBase + size - 16
+            expirySeconds = readDoubleLE(in: pageData, at: fallbackExpiry)
+            if creationSeconds == nil {
+                creationSeconds = readDoubleLE(in: pageData, at: fallbackExpiry + 8)
+            }
         }
+        guard let expirySeconds else { return nil }
 
         guard let domain = readCString(in: pageData, at: recordBase + Int(domainOffset), limit: recordLimit),
               let name = readCString(in: pageData, at: recordBase + Int(nameOffset), limit: recordLimit),
@@ -92,7 +99,7 @@ struct BinaryCookiesReader {
         }
 
         let expires = expirySeconds > 0 ? Date(timeIntervalSinceReferenceDate: expirySeconds) : nil
-        let createdAt = creationSeconds > 0 ? Date(timeIntervalSinceReferenceDate: creationSeconds) : nil
+        let createdAt = creationSeconds.flatMap { $0 > 0 ? Date(timeIntervalSinceReferenceDate: $0) : nil }
         let isSecure = (flags & 0x1) != 0
         let isHTTPOnly = (flags & 0x4) != 0
 

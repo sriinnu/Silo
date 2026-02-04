@@ -53,10 +53,16 @@ public struct BrowserCookieStoreExport: Codable, Sendable {
 }
 
 public struct BrowserCookieExport: Codable, Sendable {
+    public let schemaVersion: Int
     public let generatedAt: Date
     public let stores: [BrowserCookieStoreExport]
 
-    public init(generatedAt: Date = Date(), stores: [BrowserCookieStoreExport]) {
+    public init(
+        schemaVersion: Int = 1,
+        generatedAt: Date = Date(),
+        stores: [BrowserCookieStoreExport])
+    {
+        self.schemaVersion = schemaVersion
         self.generatedAt = generatedAt
         self.stores = stores
     }
@@ -71,6 +77,26 @@ public struct BrowserCookieExport: Codable, Sendable {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         }
         return try encoder.encode(self)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case generatedAt
+        case stores
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = (try? container.decode(Int.self, forKey: .schemaVersion)) ?? 1
+        self.generatedAt = try container.decode(Date.self, forKey: .generatedAt)
+        self.stores = try container.decode([BrowserCookieStoreExport].self, forKey: .stores)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(generatedAt, forKey: .generatedAt)
+        try container.encode(stores, forKey: .stores)
     }
 }
 

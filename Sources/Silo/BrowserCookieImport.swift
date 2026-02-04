@@ -10,10 +10,12 @@ public struct BrowserCookieImportOptions: Sendable {
 }
 
 public struct BrowserCookieImport: Sendable {
+    public let schemaVersion: Int
     public let generatedAt: Date
     public let stores: [BrowserCookieStoreRecords]
 
-    public init(generatedAt: Date = Date(), stores: [BrowserCookieStoreRecords]) {
+    public init(schemaVersion: Int = 1, generatedAt: Date = Date(), stores: [BrowserCookieStoreRecords]) {
+        self.schemaVersion = schemaVersion
         self.generatedAt = generatedAt
         self.stores = stores
     }
@@ -37,6 +39,7 @@ public struct BrowserCookieImport: Sendable {
         export: BrowserCookieExport,
         options: BrowserCookieImportOptions = BrowserCookieImportOptions())
     {
+        self.schemaVersion = export.schemaVersion
         self.generatedAt = export.generatedAt
         self.stores = export.stores.map { storeExport in
             let store = BrowserCookieStore(

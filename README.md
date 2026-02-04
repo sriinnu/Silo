@@ -214,6 +214,10 @@ let relaxedImport = try client.importJSON(
 )
 ```
 
+### JSON Schema Version
+
+`BrowserCookieExport` embeds a `schemaVersion` (currently `1`) so payloads can evolve safely.
+
 ### Analytics + Sync Helpers
 
 ```swift
@@ -415,10 +419,24 @@ public struct BrowserCookieRecord {
 
 Note: optional fields (e.g. `createdAt`, `priority`, `partitionKey`) depend on browser support and storage format.
 
+### Field Availability (By Browser)
+
+| Field | Chromium | Firefox | Safari/WebKit |
+|------|----------|---------|---------------|
+| `domain`, `name`, `path`, `value` | ✓ | ✓ | ✓ |
+| `expires` | ✓ | ✓ | ✓ |
+| `createdAt` | ✓ | ✓ | ✓ |
+| `lastAccessedAt` | ✓ | ✓ | - |
+| `priority` | ✓ | ✓ | - |
+| `partitionKey` | ✓ | ✓ | - |
+| `isSameParty` | ✓ | ✓ | - |
+| `sameSite` | ✓ | ✓ | - |
+
 ### BrowserCookieExport
 
 ```swift
 public struct BrowserCookieExport {
+    public var schemaVersion: Int
     public var generatedAt: Date
     public var stores: [BrowserCookieStoreExport]
     public func jsonData(prettyPrinted: Bool = true) throws -> Data

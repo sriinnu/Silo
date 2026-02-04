@@ -28,6 +28,7 @@ final class BrowserCookieImportTests: XCTestCase {
         let data = try export.jsonData(prettyPrinted: false)
         let imported = try BrowserCookieImport(data: data)
 
+        XCTAssertEqual(imported.schemaVersion, 1)
         XCTAssertEqual(imported.stores.count, 1)
         XCTAssertEqual(imported.stores.first?.store.browser, .chrome)
         let importedRecord = imported.records.first
@@ -64,6 +65,7 @@ final class BrowserCookieImportTests: XCTestCase {
         let data = Data(json.utf8)
 
         let defaultImport = try BrowserCookieImport(data: data)
+        XCTAssertEqual(defaultImport.schemaVersion, 1)
         XCTAssertEqual(defaultImport.records.first?.isHostOnly, true)
 
         let relaxedImport = try BrowserCookieImport(
