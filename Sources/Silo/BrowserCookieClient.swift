@@ -6,6 +6,20 @@ import FoundationNetworking
 
 /// High-level API for enumerating and reading browser cookies.
 public struct BrowserCookieClient: Sendable {
+    public enum MutationError: LocalizedError, Sendable {
+        case duplicateCookie(details: String)
+        case missingCookie(details: String)
+
+        public var errorDescription: String? {
+            switch self {
+            case let .duplicateCookie(details):
+                return "Cookie already exists: \(details)"
+            case let .missingCookie(details):
+                return "Cookie not found: \(details)"
+            }
+        }
+    }
+
     public struct Configuration: Sendable {
         public var homeDirectories: [URL]
         public var decryptionFailurePolicy: BrowserCookieDecryptionFailurePolicy
@@ -194,6 +208,19 @@ public struct BrowserCookieClient: Sendable {
             }
         }
 
+        if query.useRegex, let pattern = query.pathPattern, !pattern.isEmpty {
+            let regex: NSRegularExpression
+            do {
+                regex = try NSRegularExpression(pattern: pattern, options: [])
+            } catch {
+                throw BrowserCookieQueryError.invalidPathPattern(pattern)
+            }
+            filtered = filtered.filter { record in
+                let range = NSRange(record.path.startIndex..<record.path.endIndex, in: record.path)
+                return regex.firstMatch(in: record.path, options: [], range: range) != nil
+            }
+        }
+
         if !query.domains.isEmpty {
             filtered = filtered.filter { record in
                 Self.matchesDomain(record.domain, patterns: query.domains, match: query.domainMatch)
@@ -256,5 +283,44 @@ public struct BrowserCookieClient: Sendable {
             }
         }
         return false
+    }
+}
+
+public extension BrowserCookieClient {
+    func records(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieMockStore) throws -> [BrowserCookieRecord]
+    {
+        try store.records(matching: query)
+    }
+
+    func cookies(
+        matching query: BrowserCookieQuery,
+        in store: BrowserCookieMockStore) throws -> [HTTPCookie]
+    {
+        let records = try store.records(matching: query)
+        return Self.makeHTTPCookies(records, origin: query.origin)
+    }
+
+    func create(_ record: BrowserCookieRecord, in store: BrowserCookieMockStore) throws {
+        try store.create(record)
+    }
+
+    func update(_ record: BrowserCookieRecord, in store: BrowserCookieMockStore) throws {
+        try store.update(record)
+    }
+
+    func upsert(_ record: BrowserCookieRecord, in store: BrowserCookieMockStore) {
+        store.upsert(record)
+    }
+
+    @discardableResult
+    func delete(_ record: BrowserCookieRecord, in store: BrowserCookieMockStore) -> Bool {
+        store.delete(record)
+    }
+
+    @discardableResult
+    func delete(matching query: BrowserCookieQuery, in store: BrowserCookieMockStore) throws -> Int {
+        try store.delete(matching: query)
     }
 }

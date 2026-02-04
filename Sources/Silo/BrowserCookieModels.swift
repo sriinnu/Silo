@@ -1,7 +1,7 @@
 import Foundation
 
 /// Supported browsers for cookie extraction.
-public enum Browser: String, Sendable, Hashable, CaseIterable {
+public enum Browser: String, Sendable, Hashable, CaseIterable, Codable {
     case safari
     case chrome
     case chromeBeta
@@ -81,7 +81,7 @@ public enum BrowserCookiePathMatch: Sendable {
 }
 
 /// SameSite policy values for cookies.
-public enum BrowserCookieSameSite: String, Sendable {
+public enum BrowserCookieSameSite: String, Sendable, Codable {
     case lax
     case strict
     case none
@@ -96,6 +96,19 @@ public enum BrowserCookieSameSite: String, Sendable {
             return "None"
         }
     }
+}
+
+/// Cookie priority values (browser-specific scale).
+public struct BrowserCookiePriority: RawRepresentable, Sendable, Hashable, Codable {
+    public let rawValue: Int
+
+    public init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+
+    public static let low = BrowserCookiePriority(rawValue: 0)
+    public static let medium = BrowserCookiePriority(rawValue: 1)
+    public static let high = BrowserCookiePriority(rawValue: 2)
 }
 
 /// Behavior when a cookie value fails to decrypt.
@@ -149,6 +162,7 @@ public struct BrowserCookieQuery: Sendable {
     public let domains: [String]
     public let domainMatch: BrowserCookieDomainMatch
     public let domainPattern: String?
+    public let pathPattern: String?
     public let useRegex: Bool
     public let paths: [String]
     public let pathMatch: BrowserCookiePathMatch
@@ -166,6 +180,7 @@ public struct BrowserCookieQuery: Sendable {
         domains: [String] = [],
         domainMatch: BrowserCookieDomainMatch = .contains,
         domainPattern: String? = nil,
+        pathPattern: String? = nil,
         useRegex: Bool = false,
         paths: [String] = [],
         pathMatch: BrowserCookiePathMatch = .contains,
@@ -182,6 +197,7 @@ public struct BrowserCookieQuery: Sendable {
         self.domains = domains
         self.domainMatch = domainMatch
         self.domainPattern = domainPattern
+        self.pathPattern = pathPattern
         self.useRegex = useRegex
         self.paths = paths
         self.pathMatch = pathMatch
@@ -209,7 +225,7 @@ public struct BrowserProfile: Sendable, Hashable {
 }
 
 /// Which cookie store a browser profile represents.
-public enum BrowserCookieStoreKind: String, Sendable {
+public enum BrowserCookieStoreKind: String, Sendable, Codable {
     case primary
     case network
     case safari
@@ -246,9 +262,14 @@ public struct BrowserCookieRecord: Sendable {
     public let path: String
     public let value: String
     public let expires: Date?
+    public let createdAt: Date?
+    public let lastAccessedAt: Date?
     public let isSecure: Bool
     public let isHTTPOnly: Bool
     public let sameSite: BrowserCookieSameSite?
+    public let priority: BrowserCookiePriority?
+    public let partitionKey: String?
+    public let isSameParty: Bool?
 
     public var isDomainCookie: Bool { !self.isHostOnly }
     public var isSession: Bool { self.expires == nil }
@@ -264,10 +285,15 @@ public struct BrowserCookieRecord: Sendable {
         path: String,
         value: String,
         expires: Date?,
+        createdAt: Date? = nil,
+        lastAccessedAt: Date? = nil,
         isSecure: Bool,
         isHTTPOnly: Bool,
         isHostOnly: Bool? = nil,
-        sameSite: BrowserCookieSameSite? = nil)
+        sameSite: BrowserCookieSameSite? = nil,
+        priority: BrowserCookiePriority? = nil,
+        partitionKey: String? = nil,
+        isSameParty: Bool? = nil)
     {
         let (normalizedDomain, hostOnly) = Self.parseDomain(domain, isHostOnly: isHostOnly)
         self.domain = normalizedDomain
@@ -276,9 +302,14 @@ public struct BrowserCookieRecord: Sendable {
         self.path = path
         self.value = value
         self.expires = expires
+        self.createdAt = createdAt
+        self.lastAccessedAt = lastAccessedAt
         self.isSecure = isSecure
         self.isHTTPOnly = isHTTPOnly
         self.sameSite = sameSite
+        self.priority = priority
+        self.partitionKey = partitionKey
+        self.isSameParty = isSameParty
     }
 
     private static func parseDomain(_ raw: String, isHostOnly: Bool?) -> (String, Bool) {
@@ -347,11 +378,14 @@ public enum BrowserCookieError: LocalizedError, Sendable {
 /// Errors raised when building or applying cookie queries.
 public enum BrowserCookieQueryError: LocalizedError, Sendable {
     case invalidDomainPattern(String)
+    case invalidPathPattern(String)
 
     public var errorDescription: String? {
         switch self {
         case let .invalidDomainPattern(pattern):
             "Invalid domain regex pattern: \(pattern)"
+        case let .invalidPathPattern(pattern):
+            "Invalid path regex pattern: \(pattern)"
         }
     }
 }

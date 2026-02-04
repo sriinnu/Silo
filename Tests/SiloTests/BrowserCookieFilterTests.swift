@@ -56,6 +56,18 @@ final class BrowserCookieFilterTests: XCTestCase {
         XCTAssertEqual(filtered.first?.domain, "api.example.com")
     }
 
+    func testRegexPathFiltering() throws {
+        let records = [
+            makeRecord(domain: "example.com", path: "/api/v1"),
+            makeRecord(domain: "example.com", path: "/admin"),
+            makeRecord(domain: "example.com", path: "/api/v2"),
+        ]
+        let query = BrowserCookieQuery(pathPattern: "^/api/", useRegex: true)
+        let filtered = try BrowserCookieClient.apply(query: query, to: records)
+        XCTAssertEqual(filtered.count, 2)
+        XCTAssertEqual(filtered.map(\.path), ["/api/v1", "/api/v2"])
+    }
+
     func testPathPrefixFiltering() throws {
         let records = [
             makeRecord(domain: "example.com", path: "/api/v1"),
@@ -65,6 +77,19 @@ final class BrowserCookieFilterTests: XCTestCase {
         let query = BrowserCookieQuery(paths: ["/api", "/admin"], pathMatch: .prefix)
         let filtered = try BrowserCookieClient.apply(query: query, to: records)
         XCTAssertEqual(filtered.count, 2)
+    }
+
+    func testInvalidPathRegexThrows() {
+        let records = [
+            makeRecord(domain: "example.com", path: "/api"),
+        ]
+        let query = BrowserCookieQuery(pathPattern: "[", useRegex: true)
+        XCTAssertThrowsError(try BrowserCookieClient.apply(query: query, to: records)) { error in
+            guard case let BrowserCookieQueryError.invalidPathPattern(pattern) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(pattern, "[")
+        }
     }
 
     func testExpiryAndSessionFiltering() throws {

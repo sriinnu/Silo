@@ -1,0 +1,38 @@
+{
+  "name": "@sriinnu/silo",
+  "version": "1.0.0",
+  "description": "Swift package for reading browser cookie storage across platforms",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sriinnu/Silo.git"
+  },
+  "homepage": "https://github.com/sriinnu/Silo#readme",
+  "bugs": {
+    "url": "https://github.com/sriinnu/Silo/issues"
+  },
+  "keywords": [
+    "swift",
+    "swiftpm",
+    "cookies",
+    "browser",
+    "safari",
+    "chrome",
+    "firefox",
+    "edge",
+    "decryption",
+    "keychain"
+  ],
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE",
+    "Package.swift",
+    "Sources",
+    "Assets"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -38,7 +38,9 @@ struct BinaryCookiesReader {
 
     private func parsePage(_ pageData: Data) -> [BrowserCookieRecord] {
         guard pageData.count >= 8 else { return [] }
-        guard readTag(in: pageData, at: 0) == "page" else { return [] }
+        let pageTag = readTag(in: pageData, at: 0)
+        let pageHeader = readUInt32BE(in: pageData, at: 0)
+        guard pageTag == "page" || pageHeader == 0x00000100 else { return [] }
         guard let cookieCount = readUInt32LE(in: pageData, at: 4) else { return [] }
 
         var offsets: [Int] = []
@@ -63,6 +65,8 @@ struct BinaryCookiesReader {
         let size = Int(sizeValue)
         guard size > 0, offset + size <= pageData.count else { return nil }
 
+        guard size >= Self.cookieHeaderSize else { return nil }
+
         let flags = readUInt32LE(in: pageData, at: offset + 8) ?? 0
         guard let domainOffset = readUInt32LE(in: pageData, at: offset + 16),
               let nameOffset = readUInt32LE(in: pageData, at: offset + 20),
@@ -72,17 +76,23 @@ struct BinaryCookiesReader {
         }
 
         let recordBase = offset
-        let expiryOffset = offset + size - 16
-        guard let expirySeconds = readDoubleLE(in: pageData, at: expiryOffset) else { return nil }
+        let recordLimit = offset + size
+        let expiryOffset = recordBase + 40
+        let creationOffset = recordBase + 48
+        guard let expirySeconds = readDoubleLE(in: pageData, at: expiryOffset),
+              let creationSeconds = readDoubleLE(in: pageData, at: creationOffset) else {
+            return nil
+        }
 
-        guard let domain = readCString(in: pageData, at: recordBase + Int(domainOffset)),
-              let name = readCString(in: pageData, at: recordBase + Int(nameOffset)),
-              let path = readCString(in: pageData, at: recordBase + Int(pathOffset)),
-              let value = readCString(in: pageData, at: recordBase + Int(valueOffset)) else {
+        guard let domain = readCString(in: pageData, at: recordBase + Int(domainOffset), limit: recordLimit),
+              let name = readCString(in: pageData, at: recordBase + Int(nameOffset), limit: recordLimit),
+              let path = readCString(in: pageData, at: recordBase + Int(pathOffset), limit: recordLimit),
+              let value = readCString(in: pageData, at: recordBase + Int(valueOffset), limit: recordLimit) else {
             return nil
         }
 
         let expires = expirySeconds > 0 ? Date(timeIntervalSinceReferenceDate: expirySeconds) : nil
+        let createdAt = creationSeconds > 0 ? Date(timeIntervalSinceReferenceDate: creationSeconds) : nil
         let isSecure = (flags & 0x1) != 0
         let isHTTPOnly = (flags & 0x4) != 0
 
@@ -92,6 +102,7 @@ struct BinaryCookiesReader {
             path: path.isEmpty ? "/" : path,
             value: value,
             expires: expires,
+            createdAt: createdAt,
             isSecure: isSecure,
             isHTTPOnly: isHTTPOnly,
             sameSite: nil)
@@ -103,10 +114,12 @@ struct BinaryCookiesReader {
         return String(data: slice, encoding: .ascii)
     }
 
-    private func readCString(in data: Data, at offset: Int) -> String? {
+    private func readCString(in data: Data, at offset: Int, limit: Int? = nil) -> String? {
         guard offset < data.count else { return nil }
+        let cappedLimit = min(limit ?? data.count, data.count)
+        guard offset < cappedLimit else { return nil }
         var end = offset
-        while end < data.count && data[end] != 0 {
+        while end < cappedLimit && data[end] != 0 {
             end += 1
         }
         let slice = data[offset..<end]
@@ -144,4 +157,6 @@ struct BinaryCookiesReader {
         guard let bits = readUInt64LE(in: data, at: offset) else { return nil }
         return Double(bitPattern: bits)
     }
+
+    private static let cookieHeaderSize = 56
 }

@@ -1,0 +1,34 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="64" fill="#F5EFE8"/>
+
+  <!-- Platform orbit markers -->
+  <circle cx="256" cy="52" r="8" fill="#4B2A18"/>
+  <circle cx="460" cy="256" r="8" fill="#4B2A18"/>
+  <circle cx="256" cy="460" r="8" fill="#4B2A18"/>
+  <circle cx="52" cy="256" r="8" fill="#4B2A18"/>
+
+  <!-- Silo rim -->
+  <path d="M168 136h176l-10 56c-4 22-24 38-46 38h-64c-22 0-42-16-46-38l-10-56z" fill="#D08A5C" stroke="#4B2A18" stroke-width="8" stroke-linejoin="round"/>
+
+  <!-- Silo body -->
+  <path d="M176 230h160l18 150c3 28-19 52-47 52H205c-28 0-50-24-47-52l18-150z" fill="#C47A4A" stroke="#4B2A18" stroke-width="8" stroke-linejoin="round"/>
+
+  <!-- Handles -->
+  <path d="M144 260c-26 6-44 30-40 58 4 26 24 46 50 50" stroke="#4B2A18" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M368 260c26 6 44 30 40 58-4 26-24 46-50 50" stroke="#4B2A18" stroke-width="10" fill="none" stroke-linecap="round"/>
+
+  <!-- Filter motif -->
+  <path d="M214 286h84" stroke="#4B2A18" stroke-width="8" stroke-linecap="round"/>
+  <path d="M206 318h100" stroke="#4B2A18" stroke-width="8" stroke-linecap="round"/>
+  <path d="M198 350h116" stroke="#4B2A18" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Cookie dots -->
+  <circle cx="214" cy="248" r="6" fill="#4B2A18"/>
+  <circle cx="252" cy="258" r="6" fill="#4B2A18"/>
+  <circle cx="292" cy="244" r="6" fill="#4B2A18"/>
+
+  <!-- Lock glyph -->
+  <rect x="238" y="372" width="36" height="28" rx="6" fill="#F5EFE8" stroke="#4B2A18" stroke-width="6"/>
+  <path d="M246 372v-8c0-8 6-14 14-14s14 6 14 14v8" stroke="#4B2A18" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="256" cy="386" r="4" fill="#4B2A18"/>
+</svg>

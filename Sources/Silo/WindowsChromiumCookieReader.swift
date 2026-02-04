@@ -22,6 +22,8 @@ struct WindowsChromiumCookieReader {
 private struct WindowsChromiumDecryptor: ChromiumCookieDecrypting {
     let masterKey: Data?
 
+    var hasKey: Bool { masterKey != nil }
+
     init(databaseURL: URL?) {
         if let databaseURL {
             self.masterKey = Self.readLocalStateKey(databaseURL: databaseURL)
@@ -54,7 +56,9 @@ private struct WindowsChromiumDecryptor: ChromiumCookieDecrypting {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let osCrypt = json["os_crypt"] as? [String: Any],
               let encryptedKeyBase64 = osCrypt["encrypted_key"] as? String,
-              let encryptedKeyData = Data(base64Encoded: encryptedKeyBase64) else {
+              let encryptedKeyData = Data(
+                base64Encoded: encryptedKeyBase64,
+                options: .ignoreUnknownCharacters) else {
             return nil
         }
 
@@ -77,6 +81,7 @@ private struct WindowsChromiumDecryptor: ChromiumCookieDecrypting {
     }
 
     private static func decryptDPAPI(data: Data) -> Data? {
+        guard !data.isEmpty else { return nil }
         var input = DATA_BLOB()
         var output = DATA_BLOB()
         let copied = [UInt8](data)
@@ -85,7 +90,14 @@ private struct WindowsChromiumDecryptor: ChromiumCookieDecrypting {
             guard let baseAddress = buffer.baseAddress else { return nil }
             input.pbData = UnsafeMutablePointer<UInt8>(mutating: baseAddress.assumingMemoryBound(to: UInt8.self))
             input.cbData = UInt32(buffer.count)
-            let result = CryptUnprotectData(&input, nil, nil, nil, nil, 0, &output)
+            let result = CryptUnprotectData(
+                &input,
+                nil,
+                nil,
+                nil,
+                nil,
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &output)
             guard result != 0, let outData = output.pbData else {
                 return nil
             }

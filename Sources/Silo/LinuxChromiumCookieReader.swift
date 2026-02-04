@@ -29,6 +29,8 @@ private struct LinuxChromiumDecryptor: ChromiumCookieDecrypting {
     let legacyKey: Data?
     let gcmKey: Data?
 
+    var hasKey: Bool { legacyKey != nil || gcmKey != nil }
+
     init(browser: Browser, databaseURL: URL?) {
         let password = Self.safeStoragePassword(for: browser)
         self.legacyKey = password.flatMap { Self.deriveKey(from: $0) }

@@ -257,6 +257,7 @@ private struct MacOSSafariCookieBackend: BrowserCookieBackend {
 #if os(iOS)
 private struct IOSCookieBackend: BrowserCookieBackend {
     func stores(for browser: Browser, configuration: BrowserCookieClient.Configuration) -> [BrowserCookieStore] {
+        guard browser.engine == .webkit else { return [] }
         var stores: [BrowserCookieStore] = []
         for home in configuration.homeDirectories {
             let candidatePaths = [

@@ -27,6 +27,9 @@ let package = Package(
         .testTarget(
             name: "SiloTests",
             dependencies: ["Silo"],
-            path: "Tests/SiloTests"),
+            path: "Tests/SiloTests",
+            resources: [
+                .copy("Fixtures"),
+            ]),
     ],
     swiftLanguageModes: [.v6])

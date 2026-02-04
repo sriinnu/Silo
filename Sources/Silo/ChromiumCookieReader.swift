@@ -34,10 +34,9 @@ struct ChromiumCookieReader {
         }
         defer { sqlite3_close(db) }
 
-        let query = """
-        SELECT host_key, name, path, value, encrypted_value, expires_utc, is_secure, is_httponly, samesite
-        FROM cookies
-        """
+        let availableColumns = Self.fetchColumns(db: db, table: "cookies")
+        let select = Self.selectColumns(available: availableColumns)
+        let query = "SELECT \(select.columns.joined(separator: ", ")) FROM cookies"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
             throw BrowserCookieError.loadFailed(
@@ -46,21 +45,23 @@ struct ChromiumCookieReader {
         }
         defer { sqlite3_finalize(statement) }
 
+        let index = select.index
+        let partitionKeyColumn = select.partitionKeyColumn
         var records: [BrowserCookieRecord] = []
         var usedEncryptedValues = false
         var failedDecryptions = 0
 
         while sqlite3_step(statement) == SQLITE_ROW {
-            let hostKey = sqlite3_column_text(statement, 0).flatMap { String(cString: $0) } ?? ""
-            let name = sqlite3_column_text(statement, 1).flatMap { String(cString: $0) } ?? ""
-            let path = sqlite3_column_text(statement, 2).flatMap { String(cString: $0) } ?? ""
-            let value = sqlite3_column_text(statement, 3).flatMap { String(cString: $0) } ?? ""
-            let encrypted = sqlite3_column_blob(statement, 4)
-            let encryptedLength = Int(sqlite3_column_bytes(statement, 4))
-            let expiresUtc = sqlite3_column_int64(statement, 5)
-            let isSecure = sqlite3_column_int(statement, 6) != 0
-            let isHttpOnly = sqlite3_column_int(statement, 7) != 0
-            let sameSiteValue = sqlite3_column_int(statement, 8)
+            let hostKey = columnText(statement, index["host_key"] ?? 0) ?? ""
+            let name = columnText(statement, index["name"] ?? 1) ?? ""
+            let path = columnText(statement, index["path"] ?? 2) ?? ""
+            let value = columnText(statement, index["value"] ?? 3) ?? ""
+            let encrypted = columnBlob(statement, index["encrypted_value"] ?? 4)
+            let encryptedLength = columnBlobLength(statement, index["encrypted_value"] ?? 4)
+            let expiresUtc = columnInt64(statement, index["expires_utc"] ?? 5) ?? 0
+            let isSecure = (columnInt(statement, index["is_secure"] ?? 6) ?? 0) != 0
+            let isHttpOnly = (columnInt(statement, index["is_httponly"] ?? 7) ?? 0) != 0
+            let sameSiteValue = columnInt(statement, index["samesite"] ?? 8) ?? 0
 
             let decryptedValue: String
             if value.isEmpty, let encrypted = encrypted, encryptedLength > 0 {
@@ -82,6 +83,12 @@ struct ChromiumCookieReader {
 
             let expires = Self.date(fromChromiumTimestamp: expiresUtc)
             let sameSite = Self.sameSite(from: sameSiteValue)
+            let createdAt = columnInt64(statement, index["creation_utc"]).flatMap(Self.date(fromChromiumTimestamp:))
+            let lastAccessedAt = columnInt64(statement, index["last_access_utc"]).flatMap(Self.date(fromChromiumTimestamp:))
+            let priorityValue = columnInt(statement, index["priority"]).map { Int($0) }
+            let priority = priorityValue.map(BrowserCookiePriority.init(rawValue:))
+            let isSameParty = columnInt(statement, index["is_same_party"]).map { $0 != 0 }
+            let partitionKey = partitionKeyColumn.flatMap { columnText(statement, index[$0]) }
 
             records.append(BrowserCookieRecord(
                 domain: hostKey,
@@ -89,9 +96,14 @@ struct ChromiumCookieReader {
                 path: path.isEmpty ? "/" : path,
                 value: decryptedValue,
                 expires: expires,
+                createdAt: createdAt,
+                lastAccessedAt: lastAccessedAt,
                 isSecure: isSecure,
                 isHTTPOnly: isHttpOnly,
-                sameSite: sameSite))
+                sameSite: sameSite,
+                priority: priority,
+                partitionKey: partitionKey,
+                isSameParty: isSameParty))
         }
 
         if usedEncryptedValues, requireKeyForEncrypted, !decryptor.hasKey {
@@ -144,4 +156,85 @@ struct ChromiumCookieReader {
         components.timeZone = TimeZone(secondsFromGMT: 0)
         return components.date ?? Date(timeIntervalSince1970: 0)
     }()
+
+    private struct ChromiumSelect {
+        let columns: [String]
+        let index: [String: Int]
+        let partitionKeyColumn: String?
+    }
+
+    private static func fetchColumns(db: OpaquePointer?, table: String) -> Set<String> {
+        guard let db else { return [] }
+        var columns = Set<String>()
+        let query = "PRAGMA table_info(\(table));"
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let name = sqlite3_column_text(statement, 1) {
+                    columns.insert(String(cString: name))
+                }
+            }
+        }
+        sqlite3_finalize(statement)
+        return columns
+    }
+
+    private static func selectColumns(available: Set<String>) -> ChromiumSelect {
+        var columns = [
+            "host_key",
+            "name",
+            "path",
+            "value",
+            "encrypted_value",
+            "expires_utc",
+            "is_secure",
+            "is_httponly",
+            "samesite",
+        ]
+
+        for name in ["creation_utc", "last_access_utc", "priority", "is_same_party"] {
+            if available.contains(name) {
+                columns.append(name)
+            }
+        }
+
+        var partitionKeyColumn: String?
+        if available.contains("partition_key") {
+            partitionKeyColumn = "partition_key"
+            columns.append("partition_key")
+        } else if available.contains("top_frame_site_key") {
+            partitionKeyColumn = "top_frame_site_key"
+            columns.append("top_frame_site_key")
+        }
+
+        let index = Dictionary(uniqueKeysWithValues: columns.enumerated().map { ($1, $0) })
+        return ChromiumSelect(columns: columns, index: index, partitionKeyColumn: partitionKeyColumn)
+    }
+
+    private func columnText(_ statement: OpaquePointer?, _ index: Int?) -> String? {
+        guard let index, sqlite3_column_type(statement, Int32(index)) != SQLITE_NULL,
+              let text = sqlite3_column_text(statement, Int32(index)) else {
+            return nil
+        }
+        let value = String(cString: text)
+        return value.isEmpty ? nil : value
+    }
+
+    private func columnInt(_ statement: OpaquePointer?, _ index: Int?) -> Int32? {
+        guard let index, sqlite3_column_type(statement, Int32(index)) != SQLITE_NULL else { return nil }
+        return sqlite3_column_int(statement, Int32(index))
+    }
+
+    private func columnInt64(_ statement: OpaquePointer?, _ index: Int?) -> Int64? {
+        guard let index, sqlite3_column_type(statement, Int32(index)) != SQLITE_NULL else { return nil }
+        return sqlite3_column_int64(statement, Int32(index))
+    }
+
+    private func columnBlob(_ statement: OpaquePointer?, _ index: Int) -> UnsafeRawPointer? {
+        sqlite3_column_blob(statement, Int32(index))
+    }
+
+    private func columnBlobLength(_ statement: OpaquePointer?, _ index: Int) -> Int {
+        Int(sqlite3_column_bytes(statement, Int32(index)))
+    }
 }
